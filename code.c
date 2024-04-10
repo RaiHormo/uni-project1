@@ -42,8 +42,8 @@ char left_c = 'a';
 char right_c = 'd';
 
 //Globals
-char **Map;
-int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false;
+char **Map, Msg[50], NextMsg[50];
+int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false;
 enum diffs {UNSET, EASY, MEDIUM, HARD, IMPOSSIBLE};
 enum diffs difficulty = UNSET;
 
@@ -71,6 +71,7 @@ int turn_around(int dir);
 void memory_error();
 void free_everything();
 void write_slowly(char* str);
+void leia_check(int vector[2]);
 #ifdef __linux__
     char getch(void);
 #endif
@@ -83,6 +84,7 @@ int main() {
 
 void setup_map() {
     system(clears);
+    is_injured = false;
     ingame = true;
     if (N == 0 || M == 0) {
         system(clears);
@@ -145,6 +147,7 @@ void setup_map() {
     if (stormtrooper == NULL || stormtrooper_dir == NULL) memory_error();
     printf("Allocating memory for stormtrooper's vectors\n");
     for (i=0; i<stormtrooper_am; i++) {
+        printf("%d", i);
         stormtrooper[i] = (int*) malloc(sizeof(int) * 2);
         if (stormtrooper[i] == NULL) memory_error();
         stormtrooper_dir[i] = rand() % 4;
@@ -194,11 +197,14 @@ void setup_map() {
 }
 
 void handle_turn(int leias_move) {
-    move_dir(leia, leias_move);
     handle_stormtroopers();
+    move_dir(leia, leias_move);
 
     render_map();
-    if (leias_move == -1) write_slowly("\n\nYou are Leia. Find R2D2 and give him the plans!");
+    
+    if (leias_move == -1) strcpy(NextMsg, "You are Leia. Find R2D2 and give him the plans!");
+    if (strcmp(NextMsg, Msg)) write_slowly(NextMsg);
+    else printf("\n\n%s", Msg);
 
     char u = get_input();
     handle_turn(to_dir(u));
@@ -250,12 +256,31 @@ int move_dir(int vector[2], int dir) {
             new_pos[1]++;
             break;
     }
+    if (vector[0] == leia[0] && vector[1] == leia[1]) {
+        leia_check(new_pos);
+    }
     if (check_collision(new_pos)) {
         reposition(vector, new_pos);
         vector[0] = new_pos[0];
         vector[1] = new_pos[1];
         return true;
     } else return false;
+}
+
+void leia_check(int vector[2]) {
+    if (vector[0]>=0 && vector[0]<N && vector[1]>=0 && vector[1]<M) {
+        if (*position(vector) == strooper_c) {
+            int i;
+            for (i=0; i<stormtrooper_am; i++)
+                if (stormtrooper[i][0] == vector[0] && stormtrooper[i][1] == vector[1])
+                    stormtrooper_dir[i] = -1;
+            strcpy(NextMsg, "Leia fought the stormtrooper and got injured.");
+            reposition(leia, vector);
+            is_injured = true;
+            leia[0] = vector[0];
+            leia[1] = vector[1];
+        }
+    }
 }
 
 void reposition(int from[2], int to[2]) {
@@ -277,10 +302,11 @@ void handle_stormtroopers() {
     int i;
     for (i=0; i<stormtrooper_am; i++) {
         //print_vector(stormtrooper[i]);
-        if (!move_dir(stormtrooper[i], stormtrooper_dir[i])) {
-            stormtrooper_dir[i] = turn_around(stormtrooper_dir[i]);
-            move_dir(stormtrooper[i], stormtrooper_dir[i]);
-        }
+        if (stormtrooper_dir[i] != -1)
+            if (!move_dir(stormtrooper[i], stormtrooper_dir[i])) {
+                stormtrooper_dir[i] = turn_around(stormtrooper_dir[i]);
+                move_dir(stormtrooper[i], stormtrooper_dir[i]);
+            }
     }
 }
 
@@ -310,10 +336,13 @@ char *position(int vector[2]) {
 
 void write_slowly(char *str) {
     int i;
+    strcpy(Msg, str);
+    printf("\n\n");
     for (i=0; i<(int)strlen(str); i++) {
         printf("%c", str[i]);
         usleep(500);
     }
+    //sleep(1);
 }
 
 void title_screen() {
