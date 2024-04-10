@@ -4,11 +4,12 @@
 #include <ctype.h>
 #include <math.h>
 #include <time.h>
-#include <conio.h> // Windows specific
-#include <windows.h> //Windows specific
-//#include <curses.h> //Linux specific
-//#include <unistd.h> //Linux specific
-
+#include <unistd.h>
+#ifdef __Linux__
+    #include <termios.h>
+#elif __WIN32__
+    #include <conio.h>
+#endif
 
 //Constants
 #define false 0
@@ -18,7 +19,8 @@
 #define left 2
 #define right 3
 
-const char *clear = "cls"; //This changes from one OS to the other, "cls" works on windows
+const char *clears = "cls"; //This changes from one OS to the other, "cls" works on windows
+const char *alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 const char obstacle_c = 'X';
 const char empty_c = '.';
@@ -28,8 +30,6 @@ const char leia_c = 'L';
 const char r2d2_c = 'R';
 const char obf_c = '#';
 
-const char *alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
 //Controls
 char up_c = 'w';
 char down_c = 's';
@@ -38,7 +38,7 @@ char right_c = 'd';
 
 //Globals
 char **Map;
-int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true;
+int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false;
 enum diffs {UNSET, EASY, MEDIUM, HARD, IMPOSSIBLE};
 enum diffs difficulty = UNSET;
 
@@ -56,29 +56,34 @@ void render_map();
 int maxi(int a, int b);
 int to_dir(char c);
 int check_collision(int to[2]);
-int move(int vector[2], int dir);
+int move_dir(int vector[2], int dir);
 void reposition(int from[2], int to[2]);
 void handle_turn(int leias_move);
 char* position(int vector[2]);
 void print_vector(int vector[2]);
 void handle_stormtroopers();
 int turn_around(int dir);
+void memory_error();
+void free_everything();
+void write_slowly(char* str);
 
 //Code
 int main() {
-    set_control_scheme();
+    //set_control_scheme();
     title_screen();
 }
 
 void setup_map() {
-    system(clear);
+    system(clears);
+    ingame = true;
     if (N == 0 || M == 0) {
-        system(clear);
+        system(clears);
         set_board_size();
     }
     int i, j, stormtrooper_am_tmp, obstacle_am;
 
     Map = (char**) malloc(sizeof(char*) * N);
+    if (Map == NULL) memory_error();
     for (i=0; i<N; i++) 
         Map[i] = (char*) malloc(sizeof(char) * M);
     printf("Memory allocated\n");
@@ -121,28 +126,37 @@ void setup_map() {
     
     printf("Filling empty spaces\n");
         for (i=0; i<N; i++) for (j=0; j<M; j++) {
-            if (Map[i][j] != obstacle_c && Map[i][j] != strooper_c) Map[i][j] = '.';
+            if (Map[i][j] != obstacle_c) Map[i][j] = '.';
     }
 
     printf("Allocating memory for stormtroopers\n");
     stormtrooper_am_tmp = stormtrooper_am;
     stormtrooper = (int**) malloc(sizeof(int*) * stormtrooper_am);
+    printf("Allocating memory for stormtrooper's directions\n");
     stormtrooper_dir = (int*) malloc(sizeof(int) * stormtrooper_am);
+    if (stormtrooper == NULL || stormtrooper_dir == NULL) memory_error();
+    printf("Allocating memory for stormtrooper's vectors\n");
     for (i=0; i<stormtrooper_am; i++) {
         stormtrooper[i] = (int*) malloc(sizeof(int) * 2);
+        if (stormtrooper[i] == NULL) memory_error();
         stormtrooper_dir[i] = rand() % 4;
     }
+
     printf("Placing stormtroopers\n");
     int w = 0;
+    i = 0, j = 0;
     while (stormtrooper_am_tmp > 0) {
         if ((rand() % 10) == 1 && Map[i][j] == empty_c) {
             Map[i][j] = strooper_c;
             stormtrooper_am_tmp--;
             stormtrooper[w][0] = i;
             stormtrooper[w][1] = j;
+            w++;
         }
+        printf("(%d,%d) ", i, j);
         i++;
-        if (i == N) i = 0, j++;
+        if (i >= N) i = 0, j++;
+        if (j >= M) j = 0;
     }
 
     printf("Placing Leia, Vader and R2D2\n");
@@ -168,23 +182,22 @@ void setup_map() {
         print_vector(r2d2_pos);
     } while (*position(r2d2_pos) != empty_c);
     *position(r2d2_pos) = r2d2_c;
-
     handle_turn(-1);
 }
 
 void handle_turn(int leias_move) {
-    move(leia, leias_move);
+    move_dir(leia, leias_move);
     handle_stormtroopers();
 
     render_map();
-    Sleep(50);
+    if (leias_move == -1) write_slowly("\n\nYou are Leia. Find R2D2 and give him the plans!");
 
     char u = get_input();
     handle_turn(to_dir(u));
 }
 
 void render_map() {
-    system(clear);
+    system(clears);
     int i, j;
     printf("      ");
     for (i=0; i<N; i++) printf("%c ", alphabet[i]);
@@ -195,7 +208,9 @@ void render_map() {
     for (i=0; i<M; i++) {
         printf("%02d | ", i+1);
         for (j=0; j<N; j++) {
-            printf(" %c", Map[j][i]);
+            if (j == leia[0] || i == leia[1] || Map[j][i] == vader_c) {
+                printf(" %c", Map[j][i]);
+            } else printf(" %c", obf_c);
         }
         printf("\n");
     }
@@ -207,7 +222,9 @@ void print_vector(int vector[2]) {
     printf("\n(%d,%d)\n", vector[0], vector[1]);
 }
 
-int move(int vector[2], int dir) {
+int move_dir(int vector[2], int dir) {
+    //print_vector(vector);
+    //printf("%d", dir);
     int new_pos[2];
     new_pos[0] = vector[0];
     new_pos[1] = vector[1];
@@ -227,10 +244,8 @@ int move(int vector[2], int dir) {
     }
     if (check_collision(new_pos)) {
         reposition(vector, new_pos);
-        if (vector[0] == leia[0] && vector[1] == leia[1]) {
-            leia[0] = new_pos[0];
-            leia[1] = new_pos[1];
-        }
+        vector[0] = new_pos[0];
+        vector[1] = new_pos[1];
         return true;
     } else return false;
 }
@@ -253,8 +268,11 @@ int check_collision(int vector[2]) {
 void handle_stormtroopers() {
     int i;
     for (i=0; i<stormtrooper_am; i++) {
-        if (!move(stormtrooper[i], stormtrooper_dir[i]))
+        //print_vector(stormtrooper[i]);
+        if (!move_dir(stormtrooper[i], stormtrooper_dir[i])) {
             stormtrooper_dir[i] = turn_around(stormtrooper_dir[i]);
+            move_dir(stormtrooper[i], stormtrooper_dir[i]);
+        }
     }
 }
 
@@ -278,17 +296,26 @@ void get_position(int vector[2], char chara) {
     }
 }
 
-char* position(int vector[2]) {
+char *position(int vector[2]) {
     return &Map[vector[0]][vector[1]];
 }
 
+void write_slowly(char *str) {
+    int i;
+    for (i=0; i<(int)strlen(str); i++) {
+        printf("%c", str[i]);
+        usleep(500);
+    }
+}
+
 void title_screen() {
+    ingame = false;
     start_pressed = false;
-    system(clear);
+    system(clears);
     //Cool ASCII art for the title
-    printf("Programming II:\n  _____           _           _     __ \n |  __ \\         (_)         | |   /_ |\n | |__) | __ ___  _  ___  ___| |_   | |\n |  ___/ '__/ _ \\| |/ _ \\/ __| __|  | |\n | |   | | | (_) | |  __/ (__| |_   | |\n |_|   |_|  \\___/| |\\___|\\___|\\__|  |_|\n                _/ |                   \n               |__/                    \n");
-    const int menu_size = 4;
-    char *options[4] = {"START", "SET BOARD SIZE", "SET DIFFICULTY", "QUIT"};
+    printf("Programming II:\n  _____           _           _     __ \n |  __ \\         (_)         | |   /_ |\n | |__) | __ ___  _  ___  ___| |_   | |\n |  ___/ '__/ _ \\| |/ _ \\/ __| __|  | |\n | |   | | | (_) | |  __/ (__| |_   | |\n |_|   |_|  \\___/| |\\___|\\___|\\__|  |_|\n                _/ |                   \n               |__/  By Spyros Hormovitis\n");
+    const int menu_size = 5;
+    char *options[5] = {"START", "BOARD SIZE", "DIFFICULTY", "CONTROL SCHEME", "QUIT"};
     print_menu(options, menu_size);
     printf("\nUse %c and %c to navigate, %c to select ", toupper(up_c), toupper(down_c), toupper(right_c));
     char u = to_dir(get_input());
@@ -311,7 +338,7 @@ void title_screen() {
             setup_map();
             break;
         case 1:
-            system(clear);
+            system(clears);
             set_board_size();
             break;
         case 2:
@@ -319,7 +346,10 @@ void title_screen() {
             set_difficulty();
             break;
         case 3:
-            system(clear);
+            set_control_scheme();
+            break;
+        case 4:
+            system(clears);
             exit(2);
             break;
     }
@@ -344,7 +374,7 @@ void set_board_size() {
 }
 
 void set_difficulty() {
-    system(clear);
+    system(clears);
     printf("Select difficulty\n");
     const int menu_size = 4;
     char *options[4] = {"EASY", "MEDIUM", "HARD", "IMPOSSIBLE"};
@@ -404,9 +434,16 @@ char get_input() {
         printf("\nYour input: ");
         u = getc(stdin);
     }
-    if (u == '\n') return get_input();
     u = tolower(u);
-    if (u == 'x') exit(1);
+    if (u == 'x') {
+        if (ingame) {
+            free_everything();
+            title_screen();
+        } else {
+            system(clears);
+            exit(1);
+        }
+    }
     return u;
 }
 
@@ -423,12 +460,12 @@ int to_dir(char c) {
 }
 
 void set_control_scheme() {
-    system(clear);
     int scheme;
     do {
+        system(clears);
         printf("Select a control scheme\n 1 - WSAD, no enter\n 2 - ULDR, then enter\n\n");
         printf("1 is obviously the better option, 2 was just inlcuded out of obligation.");
-        scheme = get_input();
+        scheme = getch();
     } while (scheme != '1' && scheme != '2');
     if (scheme == '2') {
         better_controls = false;
@@ -436,10 +473,54 @@ void set_control_scheme() {
         down_c = 'd';
         left_c = 'l';
         right_c = 'r';
+    } else {
+        better_controls = true;
+        up_c = 'w';
+        down_c = 's';
+        left_c = 'a';
+        right_c = 'd';
     }
+    title_screen();
+}
+
+void free_everything() {
+    free(Map);
+    free(stormtrooper);
+    free(stormtrooper_dir);
 }
 
 int maxi(int a, int b) {
     if (a > b) return a;
     else return b;
 }
+
+void memory_error() {
+    printf("you don't have enough memory in the memory card");
+    exit(9);
+}
+
+//I did not write this function, I took it from https://stackoverflow.com/questions/7469139/what-is-the-equivalent-to-getch-getche-in-linux
+//it's an equvlent of getch() from <conio.h> on windows. It gets one char with no need for enter.
+#ifdef __Linux__
+char getch() {
+    char buf = 0;
+    struct termios old = {0};
+    fflush(stdout);
+    if(tcgetattr(0, &old) < 0)
+        perror("tcsetattr()");
+    old.c_lflag &= ~ICANON;
+    old.c_lflag &= ~ECHO;
+    old.c_cc[VMIN] = 1;
+    old.c_cc[VTIME] = 0;
+    if(tcsetattr(0, TCSANOW, &old) < 0)
+        perror("tcsetattr ICANON");
+    if(read(0, &buf, 1) < 0)
+        perror("read()"); 
+    old.c_lflag |= ICANON;
+    old.c_lflag |= ECHO;
+    if(tcsetattr(0, TCSADRAIN, &old) < 0)
+        perror("tcsetattr ~ICANON");
+    printf("%c\n", buf);
+    return buf;
+ }
+ #endif
