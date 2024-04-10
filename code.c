@@ -5,7 +5,7 @@
 #include <math.h>
 #include <time.h>
 #include <unistd.h>
-#ifdef __Linux__
+#ifdef __linux__
     #include <termios.h>
 #elif __WIN32__
     #include <conio.h>
@@ -66,8 +66,8 @@ int turn_around(int dir);
 void memory_error();
 void free_everything();
 void write_slowly(char* str);
-#ifdef __Linux__
-    char getch();
+#ifdef __linux__
+    char getch(void);
 #endif
 
 //Code
@@ -504,8 +504,8 @@ void memory_error() {
 
 //I did not write this function, I took it from https://stackoverflow.com/questions/7469139/what-is-the-equivalent-to-getch-getche-in-linux
 //it's an equvlent of getch() from <conio.h> on windows. It gets one char with no need for enter.
-#ifdef __Linux__
-char getch() {
+#ifdef __linux__
+char getch(void) {
     char buf = 0;
     struct termios old = {0};
     fflush(stdout);
@@ -525,5 +525,5 @@ char getch() {
         perror("tcsetattr ~ICANON");
     printf("%c\n", buf);
     return buf;
- }
- #endif
+}
+#endif
