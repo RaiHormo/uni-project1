@@ -19,7 +19,12 @@
 #define left 2
 #define right 3
 
-const char *clears = "cls"; //This changes from one OS to the other, "cls" works on windows
+//This changes from one OS to the other, "cls" works on windows
+#ifdef __linux__
+    const char *clears = "clear";
+#elif __WIN32__
+    const char *clears = "cls";
+#endif
 const char *alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 const char obstacle_c = 'X';
