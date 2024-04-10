@@ -66,6 +66,9 @@ int turn_around(int dir);
 void memory_error();
 void free_everything();
 void write_slowly(char* str);
+#ifdef __Linux__
+    char getch();
+#endif
 
 //Code
 int main() {
