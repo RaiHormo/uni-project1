@@ -43,7 +43,7 @@ char right_c = 'd';
 
 //Globals
 char **Map, Msg[50], NextMsg[50];
-int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false;
+int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false, got_help = false;
 enum diffs {UNSET, EASY, MEDIUM, HARD, IMPOSSIBLE};
 enum diffs difficulty = UNSET;
 
@@ -72,19 +72,20 @@ void memory_error();
 void free_everything();
 void write_slowly(char* str);
 void leia_check(int vector[2]);
+void help();
 #ifdef __linux__
     char getch(void);
 #endif
 
 //Code
 int main() {
-    //set_control_scheme();
     title_screen();
 }
 
 void setup_map() {
     system(clears);
     is_injured = false;
+    got_help = false;
     ingame = true;
     if (N == 0 || M == 0) {
         system(clears);
@@ -136,7 +137,7 @@ void setup_map() {
     
     printf("Filling empty spaces\n");
         for (i=0; i<N; i++) for (j=0; j<M; j++) {
-            if (Map[i][j] != obstacle_c) Map[i][j] = '.';
+            if (Map[i][j] != obstacle_c) Map[i][j] = empty_c;
     }
 
     printf("Allocating memory for stormtroopers\n");
@@ -207,6 +208,7 @@ void handle_turn(int leias_move) {
     else printf("\n\n%s", Msg);
 
     char u = get_input();
+    if (u == 'h') help();
     handle_turn(to_dir(u));
 }
 
@@ -222,7 +224,7 @@ void render_map() {
     for (i=0; i<M; i++) {
         printf("%02d | ", i+1);
         for (j=0; j<N; j++) {
-            if (j == leia[0] || i == leia[1] || Map[j][i] == vader_c) {
+            if (j == leia[0] || i == leia[1] || Map[j][i] == vader_c || got_help) {
                 printf(" %c", Map[j][i]);
             } else printf(" %c", obf_c);
         }
@@ -287,13 +289,13 @@ void reposition(int from[2], int to[2]) {
     //print_vector(from);
     //print_vector(to);
     char chara = *position(from);
-    Map[from[0]][from[1]] = '.';
+    Map[from[0]][from[1]] = empty_c;
     Map[to[0]][to[1]] = chara;
 }
 
 int check_collision(int vector[2]) {
     if (vector[0]>=0 && vector[0]<N && vector[1]>=0 && vector[1]<M) {
-        if (*position(vector) == '.') return true;
+        if (*position(vector) == empty_c) return true;
         else return false;
     } else return false;
 }
@@ -320,18 +322,13 @@ int turn_around(int dir) {
     return -1;
 }
 
-void get_position(int vector[2], char chara) {
-    int i, j;
-    for (i=0; i<N; i++) for (j=0; j<N; j++) {
-        if (Map[i][j] == chara) {
-            vector[0] = i;
-            vector[1] = j;
-        }
-    }
-}
-
 char *position(int vector[2]) {
     return &Map[vector[0]][vector[1]];
+}
+
+void help() {
+    strcpy(NextMsg, "Leia calls for help!");
+    got_help = true;
 }
 
 void write_slowly(char *str) {
@@ -350,7 +347,7 @@ void title_screen() {
     start_pressed = false;
     system(clears);
     //Cool ASCII art for the title
-    printf("Programming II:\n  _____           _           _     __ \n |  __ \\         (_)         | |   /_ |\n | |__) | __ ___  _  ___  ___| |_   | |\n |  ___/ '__/ _ \\| |/ _ \\/ __| __|  | |\n | |   | | | (_) | |  __/ (__| |_   | |\n |_|   |_|  \\___/| |\\___|\\___|\\__|  |_|\n                _/ |                   \n               |__/  By Spyros Hormovitis\n");
+    printf("Programming II:\n  _____           _           _     __ \n |  __ \\         (_)         | |   /_ |\n | |__) | __ ___  _  ___  ___| |_   | |\n |  ___/ '__/ _ \\| |/ _ \\/ __| __|  | |\n | |   | | | (_) | |  __/ (__| |_   | |\n |_|   |_|  \\___/| |\\___|\\___|\\__|  |_|\n                _/ |                   \n               |__/  A New Hope\n");
     const int menu_size = 5;
     char *options[5] = {"START", "BOARD SIZE", "DIFFICULTY", "CONTROL SCHEME", "QUIT"};
     print_menu(options, menu_size);
@@ -398,15 +395,15 @@ void set_board_size() {
     printf("Enter the number of rows: ");
     scanf("%d", &M);
     if (N >= 5 && M >= 5) {
-        printf("\n%dx%d, is that correct? (Y/N)", N, M);
-        if (getch() == 'y') {
-            if (start_pressed) setup_map();
-            else title_screen();
-        }
-        else set_board_size();
-    } else {
-        printf("\nThat's too small, the minimum size is 5x5.\n");
-        set_board_size();
+            printf("\n%dx%d, is that correct? (Y/N)", N, M);
+            if (getch() == 'y') {
+                if (start_pressed) setup_map();
+                else title_screen();
+            }
+            else set_board_size();
+        } else {
+            printf("\nThat's too small, the minimum size is 5x5.\n");
+            set_board_size();
     }
 }
 
@@ -527,8 +524,7 @@ void free_everything() {
 }
 
 int maxi(int a, int b) {
-    if (a > b) return a;
-    else return b;
+    return (a > b);
 }
 
 void memory_error() {
