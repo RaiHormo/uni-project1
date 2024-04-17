@@ -50,11 +50,10 @@ typedef struct {
 
 //Globals
 char **Map, Msg[100], NextMsg[100];
-int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false, got_help = false;
+int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false, got_help = false; game_ended = 0;
 enum diffs {UNSET, EASY, MEDIUM, HARD, IMPOSSIBLE};
 enum diffs difficulty = UNSET;
-
-int stormtrooper_am, *stormtrooper_dir;
+int stormtrooper_am, *stormtrooper_dir, level = 0;
 vec2 leia, *stormtrooper;
 
 
@@ -83,12 +82,13 @@ void write_slowly(char* str);
 void leia_check(vec2 vector, char self, char tar);
 void help();
 void hit(vec2 vector);
+void victory();
 #ifdef __linux__
     char getch(void);
 #endif
 
 //Code
-int main() {
+int main() {23
     title_screen();
 }
 
@@ -97,6 +97,7 @@ void setup_map() {
     free_everything();
     is_injured = false;
     got_help = false;
+    game_ended = 0;
     ingame = true;
     if (N == 0 || M == 0) {
         system(clears);
@@ -213,10 +214,16 @@ void handle_turn(int leias_move) {
     if (strcmp(NextMsg, Msg)) write_slowly(NextMsg);
     else printf("\n\n%s", Msg);
 
-    if (leias_move != -2) {
+    if (!game_ended) {
         char u = get_input();
         if (u == 'h') help();
         handle_turn(to_dir(u));
+    } else if (game_ended == 1) {
+        get_ch();
+        level++;
+        N--;
+        M--;
+        setup_map();
     }
 }
 
@@ -281,6 +288,7 @@ void leia_check(vec2 vector, char self, char tar) {
     printf("self: %c, target: %c\n", self, tar);
     if (self == strooper_c && tar == leia_c)
         hit(vector);
+    if (self == leia_c && tar == r2d2_c) victory();
 }
 
 void hit(vec2 vector) {
@@ -301,6 +309,11 @@ void hit(vec2 vector) {
         leia.y = vector.y;
         *position(leia) = leia_c;
     }
+}
+
+void victory() {
+    strcpy(NextMsg, "Leia successfully gave the rebel plans to R2D2!\n\nPress any button to move to the next level.");
+
 }
 
 char reposition(vec2 from, vec2 to) {
@@ -409,6 +422,7 @@ void title_screen() {
 }
 
 void set_board_size() {
+    level = 0;
     printf("\nSetup the maximum size of the board\n\nEnter the number of colummns: ");
     scanf("%d", &N);
     printf("Enter the number of rows: ");
