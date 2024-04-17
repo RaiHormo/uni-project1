@@ -88,7 +88,7 @@ void victory();
 #endif
 
 //Code
-int main() {23
+int main() {
     title_screen();
 }
 
