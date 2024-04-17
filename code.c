@@ -10,6 +10,7 @@
 #elif __WIN32__
     #include <conio.h>
 #endif
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 //Constants
 #define false 0
@@ -41,13 +42,21 @@ char down_c = 's';
 char left_c = 'a';
 char right_c = 'd';
 
+//Structs
+typedef struct {
+    int x;
+    int y;
+} vec2;
+
 //Globals
-char **Map, Msg[50], NextMsg[50];
+char **Map, Msg[100], NextMsg[100];
 int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false, got_help = false;
 enum diffs {UNSET, EASY, MEDIUM, HARD, IMPOSSIBLE};
 enum diffs difficulty = UNSET;
 
-int leia[2], *stormtrooper_dir, **stormtrooper, stormtrooper_am;
+int stormtrooper_am, *stormtrooper_dir;
+vec2 leia, *stormtrooper;
+
 
 //Funcion definitions
 void set_control_scheme();
@@ -60,19 +69,20 @@ void set_difficulty();
 void render_map();
 int maxi(int a, int b);
 int to_dir(char c);
-int check_collision(int to[2]);
-int move_dir(int vector[2], int dir);
-void reposition(int from[2], int to[2]);
+int check_collision(vec2 to);
+int move_dir(vec2* vector_src, int dir, char self);
+char reposition(vec2 from, vec2 to);
 void handle_turn(int leias_move);
-char* position(int vector[2]);
-void print_vector(int vector[2]);
+char* position(vec2 vector);
+void print_vector(vec2 vector);
 void handle_stormtroopers();
 int turn_around(int dir);
 void memory_error();
 void free_everything();
 void write_slowly(char* str);
-void leia_check(int vector[2]);
+void leia_check(vec2 vector, char self, char tar);
 void help();
+void hit(vec2 vector);
 #ifdef __linux__
     char getch(void);
 #endif
@@ -84,6 +94,7 @@ int main() {
 
 void setup_map() {
     system(clears);
+    free_everything();
     is_injured = false;
     got_help = false;
     ingame = true;
@@ -142,17 +153,11 @@ void setup_map() {
 
     printf("Allocating memory for stormtroopers\n");
     stormtrooper_am_tmp = stormtrooper_am;
-    stormtrooper = (int**) malloc(sizeof(int*) * stormtrooper_am);
+    stormtrooper = (vec2*) malloc(sizeof(vec2) * stormtrooper_am);
+    if (stormtrooper == NULL) memory_error();
     printf("Allocating memory for stormtrooper's directions\n");
     stormtrooper_dir = (int*) malloc(sizeof(int) * stormtrooper_am);
-    if (stormtrooper == NULL || stormtrooper_dir == NULL) memory_error();
-    printf("Allocating memory for stormtrooper's vectors\n");
-    for (i=0; i<stormtrooper_am; i++) {
-        printf("%d", i);
-        stormtrooper[i] = (int*) malloc(sizeof(int) * 2);
-        if (stormtrooper[i] == NULL) memory_error();
-        stormtrooper_dir[i] = rand() % 4;
-    }
+    if (stormtrooper_dir == NULL) memory_error();
 
     printf("Placing stormtroopers\n");
     int w = 0;
@@ -161,8 +166,9 @@ void setup_map() {
         if ((rand() % 10) == 1 && Map[i][j] == empty_c) {
             Map[i][j] = strooper_c;
             stormtrooper_am_tmp--;
-            stormtrooper[w][0] = i;
-            stormtrooper[w][1] = j;
+            stormtrooper[w].x = i;
+            stormtrooper[w].y = j;
+            stormtrooper_dir[w] = rand() % 4;
             w++;
         }
         printf("(%d,%d) ", i, j);
@@ -173,24 +179,24 @@ void setup_map() {
 
     printf("Placing Leia, Vader and R2D2\n");
     do {
-        leia[0] = rand() % N;
-        leia[1] = rand() % M;
+        leia.x = rand() % N;
+        leia.y = rand() % M;
         print_vector(leia);
     } while (*position(leia) != empty_c);
     *position(leia) = leia_c;
 
-    int vader_pos[2];
+    vec2 vader_pos;
     do {
-        vader_pos[0] = rand() % N;
-        vader_pos[1] = rand() % M;
+        vader_pos.x = rand() % N;
+        vader_pos.y = rand() % M;
         print_vector(vader_pos);
     } while (*position(vader_pos) != empty_c);
     *position(vader_pos) = vader_c;
 
-    int r2d2_pos[2];
+    vec2 r2d2_pos;
     do {
-        r2d2_pos[0] = rand() % N;
-        r2d2_pos[1] = rand() % M;
+        r2d2_pos.x = rand() % N;
+        r2d2_pos.y = rand() % M;
         print_vector(r2d2_pos);
     } while (*position(r2d2_pos) != empty_c);
     *position(r2d2_pos) = r2d2_c;
@@ -198,8 +204,8 @@ void setup_map() {
 }
 
 void handle_turn(int leias_move) {
+    move_dir(&leia, leias_move, leia_c);
     handle_stormtroopers();
-    move_dir(leia, leias_move);
 
     render_map();
     
@@ -207,9 +213,11 @@ void handle_turn(int leias_move) {
     if (strcmp(NextMsg, Msg)) write_slowly(NextMsg);
     else printf("\n\n%s", Msg);
 
-    char u = get_input();
-    if (u == 'h') help();
-    handle_turn(to_dir(u));
+    if (leias_move != -2) {
+        char u = get_input();
+        if (u == 'h') help();
+        handle_turn(to_dir(u));
+    }
 }
 
 void render_map() {
@@ -224,7 +232,7 @@ void render_map() {
     for (i=0; i<M; i++) {
         printf("%02d | ", i+1);
         for (j=0; j<N; j++) {
-            if (j == leia[0] || i == leia[1] || Map[j][i] == vader_c || got_help) {
+            if (j == leia.x || i == leia.y || Map[j][i] == vader_c || got_help) {
                 printf(" %c", Map[j][i]);
             } else printf(" %c", obf_c);
         }
@@ -234,68 +242,79 @@ void render_map() {
     printf("Move with %c%c%c%c ", toupper(up_c), toupper(left_c), toupper(down_c), toupper(right_c));
 }
 
-void print_vector(int vector[2]) {
-    printf("\n(%d,%d)\n", vector[0], vector[1]);
+void print_vector(vec2 vector) {
+    printf("\n(%d,%d)\n", vector.x, vector.y);
 }
 
-int move_dir(int vector[2], int dir) {
-    //print_vector(vector);
-    //printf("%d", dir);
-    int new_pos[2];
-    new_pos[0] = vector[0];
-    new_pos[1] = vector[1];
+int move_dir(vec2* vector_src, int dir, char self) {
+    vec2 new_pos, vector = *vector_src;
+    if (dir < 0) return true;
+    putc(self, stdout);
+    if (dir > 3) printf("Invalid direction!");
+    print_vector(vector);
+    new_pos.x = vector.x;
+    new_pos.y = vector.y;
     switch (dir) {
         case right:
-            new_pos[0]++;
+            new_pos.x++;
             break;
         case left:
-            new_pos[0]--;
+            new_pos.x--;
             break;
         case up:
-            new_pos[1]--;
+            new_pos.y--;
             break;
         case down:
-            new_pos[1]++;
+            new_pos.y++;
             break;
     }
-    if (vector[0] == leia[0] && vector[1] == leia[1]) {
-        leia_check(new_pos);
-    }
     if (check_collision(new_pos)) {
-        reposition(vector, new_pos);
-        vector[0] = new_pos[0];
-        vector[1] = new_pos[1];
+        int tar = reposition(vector, new_pos);
+        (*vector_src).x = new_pos.x;
+        (*vector_src).y = new_pos.y;
+        leia_check(new_pos, self, tar);
         return true;
     } else return false;
 }
 
-void leia_check(int vector[2]) {
-    if (vector[0]>=0 && vector[0]<N && vector[1]>=0 && vector[1]<M) {
-        if (*position(vector) == strooper_c) {
-            int i;
-            for (i=0; i<stormtrooper_am; i++)
-                if (stormtrooper[i][0] == vector[0] && stormtrooper[i][1] == vector[1])
-                    stormtrooper_dir[i] = -1;
-            strcpy(NextMsg, "Leia fought the stormtrooper and got injured.");
-            reposition(leia, vector);
-            is_injured = true;
-            leia[0] = vector[0];
-            leia[1] = vector[1];
-        }
+void leia_check(vec2 vector, char self, char tar) {
+    printf("self: %c, target: %c\n", self, tar);
+    if (self == strooper_c && tar == leia_c)
+        hit(vector);
+}
+
+void hit(vec2 vector) {
+    if (is_injured) {
+        reposition(vector, leia);
+        strcpy(NextMsg, "Leia was caught by a stormtrooper!\nGame over.\n\nPress X to return.");
+        got_help = true;
+        handle_turn(-2);
+    } else {
+        int i;
+        for (i=0; i<stormtrooper_am; i++)
+            if (stormtrooper[i].x == vector.x && stormtrooper[i].y == vector.y)
+                stormtrooper_dir[i] = -1;
+        strcpy(NextMsg, "Leia fought the stormtrooper and got injured.");
+        reposition(leia, vector);
+        is_injured = true;
+        leia.x = vector.x;
+        leia.y = vector.y;
+        *position(leia) = leia_c;
     }
 }
 
-void reposition(int from[2], int to[2]) {
+char reposition(vec2 from, vec2 to) {
     //print_vector(from);
     //print_vector(to);
-    char chara = *position(from);
-    Map[from[0]][from[1]] = empty_c;
-    Map[to[0]][to[1]] = chara;
+    char chara = *position(from), rtn = *position(to);
+    Map[from.x][from.y] = empty_c;
+    Map[to.x][to.y] = chara;
+    return rtn;
 }
 
-int check_collision(int vector[2]) {
-    if (vector[0]>=0 && vector[0]<N && vector[1]>=0 && vector[1]<M) {
-        if (*position(vector) == empty_c) return true;
+int check_collision(vec2 vector) {
+    if (vector.x>=0 && vector.x<N && vector.y>=0 && vector.y<M) {
+        if (*position(vector) == empty_c || *position(vector) == leia_c ) return true;
         else return false;
     } else return false;
 }
@@ -303,11 +322,11 @@ int check_collision(int vector[2]) {
 void handle_stormtroopers() {
     int i;
     for (i=0; i<stormtrooper_am; i++) {
-        //print_vector(stormtrooper[i]);
+        printf("%d", stormtrooper_dir[i]);
         if (stormtrooper_dir[i] != -1)
-            if (!move_dir(stormtrooper[i], stormtrooper_dir[i])) {
+            if (!move_dir(&stormtrooper[i], stormtrooper_dir[i], strooper_c)) {
                 stormtrooper_dir[i] = turn_around(stormtrooper_dir[i]);
-                move_dir(stormtrooper[i], stormtrooper_dir[i]);
+                move_dir(&stormtrooper[i], stormtrooper_dir[i], strooper_c);
             }
     }
 }
@@ -319,11 +338,11 @@ int turn_around(int dir) {
         case right: return left;
         case left: return right;
     }
-    return -1;
+    return dir;
 }
 
-char *position(int vector[2]) {
-    return &Map[vector[0]][vector[1]];
+char *position(vec2 vector) {
+    return &Map[vector.x][vector.y];
 }
 
 void help() {
@@ -518,13 +537,18 @@ void set_control_scheme() {
 }
 
 void free_everything() {
+    if (Map == NULL) return;
     free(Map);
     free(stormtrooper);
     free(stormtrooper_dir);
+    Map = NULL;
+    stormtrooper = NULL;
+    stormtrooper_dir = NULL;
 }
 
 int maxi(int a, int b) {
-    return (a > b);
+    if (a > b) return a;
+    return b;
 }
 
 void memory_error() {
