@@ -81,7 +81,7 @@ void free_everything();
 void write_slowly(char* str);
 void leia_check(vec2 vector, char self, char tar);
 void help();
-void hit(vec2 vector);
+void hit(vec2 vector, int is_vader);
 void victory();
 void handle_vader();
 vec2 get_dir_towards(vec2 from, vec2 to);
@@ -294,14 +294,18 @@ int move_dir(vec2* vector_src, int dir, char self) {
 void leia_check(vec2 vector, char self, char tar) {
     printf("self: %c, target: %c\n", self, tar);
     if (self == strooper_c && tar == leia_c)
-        hit(vector);
+        hit(vector, false);
     if (self == leia_c && tar == r2d2_c) victory();
+    if (self == vader_c && tar == leia_c)
+        hit(vector, true);
 }
 
-void hit(vec2 vector) {
-    if (is_injured) {
+void hit(vec2 vector, int is_vader) {
+    if (is_injured || is_vader) {
         reposition(vector, leia);
-        strcpy(NextMsg, "Leia was caught by a stormtrooper!\nGame over.\n\nPress X to return.");
+        if (is_vader)
+            strcpy(NextMsg, "Leia was caught by a Darth Vader!\nGame over.\n\nPress X to return.");
+        else strcpy(NextMsg, "Leia was caught by a Stormtrooper!\nGame over.\n\nPress X to return.");
         got_help = true;
         handle_turn(-2);
         game_ended = 2;
@@ -310,7 +314,7 @@ void hit(vec2 vector) {
         for (i=0; i<stormtrooper_am; i++)
             if (stormtrooper[i].x == vector.x && stormtrooper[i].y == vector.y)
                 stormtrooper_dir[i] = -1;
-        strcpy(NextMsg, "Leia fought the stormtrooper and got injured.");
+        strcpy(NextMsg, "Leia fought the Stormtrooper and got injured.");
         reposition(leia, vector);
         is_injured = true;
         leia.x = vector.x;
@@ -416,7 +420,6 @@ void write_slowly(char *str) {
         printf("%c", str[i]);
         usleep(500);
     }
-    //sleep(1);
 }
 
 void title_screen() {
@@ -468,20 +471,27 @@ void title_screen() {
 
 void set_board_size() {
     level = 1;
-    printf("\nSetup the maximum size of the board\n\nEnter the number of colummns: ");
-    scanf("%d", &N);
-    printf("Enter the number of rows: ");
-    scanf("%d", &M);
-    if (N >= 5 && M >= 5) {
-            printf("\n%dx%d, is that correct? (Y/N)", N, M);
-            if (getch() == 'y') {
-                if (start_pressed) setup_map();
-                else title_screen();
-            }
-            else set_board_size();
-        } else {
-            printf("\nThat's too small, the minimum size is 5x5.\n");
-            set_board_size();
+    int i = 0;
+    while (N < 5 && M < 5) {
+        printf("\nSetup the maximum size of the board\n\nEnter the number of colummns: ");
+        scanf("%d", &N);
+        printf("Enter the number of rows: ");
+        scanf("%d", &M);
+        if (N >= 5 && M >= 5) {
+                printf("\n%dx%d, is that correct? (Y/N)", N, M);
+                if (getch() == 'y') {
+                    if (start_pressed) setup_map();
+                    else title_screen();
+                }
+            } else {
+                printf("\nThat's too small, the minimum size is 5x5.\n");
+        }
+        i++;
+        if (i>69) {
+            system(clears);
+            printf("What are you doing?");
+            exit(69);
+        } 
     }
 }
 
@@ -601,8 +611,6 @@ void free_everything() {
     free(stormtrooper);
     free(stormtrooper_dir);
     Map = NULL;
-    stormtrooper = NULL;
-    stormtrooper_dir = NULL;
 }
 
 int maxi(int a, int b) {
