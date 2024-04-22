@@ -50,11 +50,11 @@ typedef struct {
 
 //Globals
 char **Map, Msg[100], NextMsg[100];
-int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false, got_help = false; game_ended = 0;
+int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false, got_help = false, game_ended = 0, vader_moved = false;
 enum diffs {UNSET, EASY, MEDIUM, HARD, IMPOSSIBLE};
 enum diffs difficulty = UNSET;
-int stormtrooper_am, *stormtrooper_dir, level = 0;
-vec2 leia, *stormtrooper;
+int stormtrooper_am, *stormtrooper_dir, level = 1;
+vec2 leia, *stormtrooper, vader;
 
 
 //Funcion definitions
@@ -68,7 +68,7 @@ void set_difficulty();
 void render_map();
 int maxi(int a, int b);
 int to_dir(char c);
-int check_collision(vec2 to);
+int check_collision(vec2 to, char self);
 int move_dir(vec2* vector_src, int dir, char self);
 char reposition(vec2 from, vec2 to);
 void handle_turn(int leias_move);
@@ -83,6 +83,9 @@ void leia_check(vec2 vector, char self, char tar);
 void help();
 void hit(vec2 vector);
 void victory();
+void handle_vader();
+vec2 get_dir_towards(vec2 from, vec2 to);
+int rand_range(int from, int to);
 #ifdef __linux__
     char getch(void);
 #endif
@@ -139,7 +142,7 @@ void setup_map() {
     srand(time(NULL));
     i = 0, j = 0;
     while (obstacle_am > 0) {
-        if ((rand() % 10) == 1 && Map[i][j] != obstacle_c) {
+        if (rand_range(0, 10) == 1 && Map[i][j] != obstacle_c) {
             Map[i][j] = obstacle_c;
             obstacle_am--;
         }
@@ -155,21 +158,21 @@ void setup_map() {
     printf("Allocating memory for stormtroopers\n");
     stormtrooper_am_tmp = stormtrooper_am;
     stormtrooper = (vec2*) malloc(sizeof(vec2) * stormtrooper_am);
-    if (stormtrooper == NULL) memory_error();
+    //if (stormtrooper == NULL) memory_error();
     printf("Allocating memory for stormtrooper's directions\n");
     stormtrooper_dir = (int*) malloc(sizeof(int) * stormtrooper_am);
-    if (stormtrooper_dir == NULL) memory_error();
+    //if (stormtrooper_dir == NULL) memory_error();
 
     printf("Placing stormtroopers\n");
     int w = 0;
     i = 0, j = 0;
     while (stormtrooper_am_tmp > 0) {
-        if ((rand() % 10) == 1 && Map[i][j] == empty_c) {
+        if (rand_range(0, 10) == 1 && Map[i][j] == empty_c) {
             Map[i][j] = strooper_c;
             stormtrooper_am_tmp--;
             stormtrooper[w].x = i;
             stormtrooper[w].y = j;
-            stormtrooper_dir[w] = rand() % 4;
+            stormtrooper_dir[w] = rand_range(0, 4);
             w++;
         }
         printf("(%d,%d) ", i, j);
@@ -180,24 +183,23 @@ void setup_map() {
 
     printf("Placing Leia, Vader and R2D2\n");
     do {
-        leia.x = rand() % N;
-        leia.y = rand() % M;
+        leia.x = rand_range(0, N);
+        leia.y = rand_range(0, M);
         print_vector(leia);
     } while (*position(leia) != empty_c);
     *position(leia) = leia_c;
 
-    vec2 vader_pos;
     do {
-        vader_pos.x = rand() % N;
-        vader_pos.y = rand() % M;
-        print_vector(vader_pos);
-    } while (*position(vader_pos) != empty_c);
-    *position(vader_pos) = vader_c;
+        vader.x = rand_range(0, N);
+        vader.y = rand_range(0, M);
+        print_vector(vader);
+    } while (*position(vader) != empty_c);
+    *position(vader) = vader_c;
 
     vec2 r2d2_pos;
     do {
-        r2d2_pos.x = rand() % N;
-        r2d2_pos.y = rand() % M;
+        r2d2_pos.x = rand_range(0, N);
+        r2d2_pos.y = rand_range(0, M);
         print_vector(r2d2_pos);
     } while (*position(r2d2_pos) != empty_c);
     *position(r2d2_pos) = r2d2_c;
@@ -207,6 +209,8 @@ void setup_map() {
 void handle_turn(int leias_move) {
     move_dir(&leia, leias_move, leia_c);
     handle_stormtroopers();
+    if (vader_moved) vader_moved = false;
+    else handle_vader();
 
     render_map();
     
@@ -219,7 +223,7 @@ void handle_turn(int leias_move) {
         if (u == 'h') help();
         handle_turn(to_dir(u));
     } else if (game_ended == 1) {
-        get_ch();
+        getch();
         level++;
         N--;
         M--;
@@ -245,7 +249,7 @@ void render_map() {
         }
         printf("\n");
     }
-    printf("Level %d\n", 1);
+    printf("Level %d\n", level);
     printf("Move with %c%c%c%c ", toupper(up_c), toupper(left_c), toupper(down_c), toupper(right_c));
 }
 
@@ -255,7 +259,10 @@ void print_vector(vec2 vector) {
 
 int move_dir(vec2* vector_src, int dir, char self) {
     vec2 new_pos, vector = *vector_src;
-    if (dir < 0) return true;
+    if (dir < 0) {
+        if (self == strooper_c) return true;
+        else return false;
+    }
     putc(self, stdout);
     if (dir > 3) printf("Invalid direction!");
     print_vector(vector);
@@ -275,7 +282,7 @@ int move_dir(vec2* vector_src, int dir, char self) {
             new_pos.y++;
             break;
     }
-    if (check_collision(new_pos)) {
+    if (check_collision(new_pos, self)) {
         int tar = reposition(vector, new_pos);
         (*vector_src).x = new_pos.x;
         (*vector_src).y = new_pos.y;
@@ -297,6 +304,7 @@ void hit(vec2 vector) {
         strcpy(NextMsg, "Leia was caught by a stormtrooper!\nGame over.\n\nPress X to return.");
         got_help = true;
         handle_turn(-2);
+        game_ended = 2;
     } else {
         int i;
         for (i=0; i<stormtrooper_am; i++)
@@ -313,7 +321,7 @@ void hit(vec2 vector) {
 
 void victory() {
     strcpy(NextMsg, "Leia successfully gave the rebel plans to R2D2!\n\nPress any button to move to the next level.");
-
+    game_ended = 1;
 }
 
 char reposition(vec2 from, vec2 to) {
@@ -325,9 +333,10 @@ char reposition(vec2 from, vec2 to) {
     return rtn;
 }
 
-int check_collision(vec2 vector) {
+int check_collision(vec2 vector, char self) {
     if (vector.x>=0 && vector.x<N && vector.y>=0 && vector.y<M) {
         if (*position(vector) == empty_c || *position(vector) == leia_c ) return true;
+        if (*position(vector) == r2d2_c && self == leia_c) return true;
         else return false;
     } else return false;
 }
@@ -342,6 +351,42 @@ void handle_stormtroopers() {
                 move_dir(&stormtrooper[i], stormtrooper_dir[i], strooper_c);
             }
     }
+}
+
+void handle_vader() {
+    vec2 towards = get_dir_towards(vader, leia);
+    int i = 0;
+    while (!vader_moved) {
+        printf("vader direction:");
+        print_vector(towards);
+        vader_moved = move_dir(&vader, towards.x, vader_c);
+        vader_moved = move_dir(&vader, towards.y, vader_c) || vader_moved;
+        if (!vader_moved) {
+            if (leia.y == vader.y) towards.y = rand_range(0, 2);
+            if (leia.x == vader.x) towards.x = rand_range(2, 4);
+        }
+        i++;
+        if (i >= 8) {
+            printf("Vader is stuck");
+            return;
+        }
+    }
+}
+
+vec2 get_dir_towards(vec2 from, vec2 to) {
+    int x_dist = from.x - to.x;
+    int y_dist = from.y - to.y;
+    vec2 rtn;
+
+    if (x_dist > 0) rtn.x = left;
+    else if (x_dist < 0) rtn.x = right;
+    else rtn.x = -1;
+
+    if (y_dist > 0) rtn.y = up;
+    else if (y_dist < 0) rtn.y = down;
+    else rtn.y = -1;
+    
+    return rtn;
 }
 
 int turn_around(int dir) {
@@ -422,7 +467,7 @@ void title_screen() {
 }
 
 void set_board_size() {
-    level = 0;
+    level = 1;
     printf("\nSetup the maximum size of the board\n\nEnter the number of colummns: ");
     scanf("%d", &N);
     printf("Enter the number of rows: ");
@@ -564,6 +609,10 @@ int maxi(int a, int b) {
     if (a > b) return a;
     return b;
 }
+
+int rand_range(int from, int to) { 
+    return (rand() % (to - from)) + from;
+} 
 
 void memory_error() {
     printf("you don't have enough memory in the memory card");
