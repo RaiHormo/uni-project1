@@ -53,7 +53,7 @@ char **Map, Msg[100], NextMsg[100];
 int menu_index = 0, N = 0, M = 0, start_pressed = false, better_controls = true, ingame = false, is_injured = false, got_help = false, game_ended = 0, vader_moved = false;
 enum diffs {UNSET, EASY, MEDIUM, HARD, IMPOSSIBLE};
 enum diffs difficulty = UNSET;
-int stormtrooper_am, *stormtrooper_dir, level = 1;
+int stormtrooper_am, *stormtrooper_dir, level = 1, force_remaining = 2;
 vec2 leia, *stormtrooper, vader;
 
 
@@ -84,8 +84,10 @@ void help();
 void hit(vec2 vector, int is_vader);
 void victory();
 void handle_vader();
+int force_get_position(vec2 *vectorref, int is_from);
 vec2 get_dir_towards(vec2 from, vec2 to);
 int rand_range(int from, int to);
+void use_force();
 #ifdef __linux__
     char getch(void);
 #endif
@@ -102,6 +104,7 @@ void setup_map() {
     got_help = false;
     game_ended = 0;
     ingame = true;
+    force_remaining = 2;
     if (N == 0 || M == 0) {
         system(clears);
         set_board_size();
@@ -158,10 +161,9 @@ void setup_map() {
     printf("Allocating memory for stormtroopers\n");
     stormtrooper_am_tmp = stormtrooper_am;
     stormtrooper = (vec2*) malloc(sizeof(vec2) * stormtrooper_am);
-    //if (stormtrooper == NULL) memory_error();
+    
     printf("Allocating memory for stormtrooper's directions\n");
     stormtrooper_dir = (int*) malloc(sizeof(int) * stormtrooper_am);
-    //if (stormtrooper_dir == NULL) memory_error();
 
     printf("Placing stormtroopers\n");
     int w = 0;
@@ -207,32 +209,37 @@ void setup_map() {
 }
 
 void handle_turn(int leias_move) {
-    move_dir(&leia, leias_move, leia_c);
-    handle_stormtroopers();
-    if (vader_moved) vader_moved = false;
-    else handle_vader();
+    if (!game_ended) {
+        move_dir(&leia, leias_move, leia_c);
+        handle_stormtroopers();
+        if (vader_moved) vader_moved = false;
+        else handle_vader();
+    }
 
     render_map();
-    
+
     if (leias_move == -1) strcpy(NextMsg, "You are Leia. Find R2D2 and give him the plans!");
     if (strcmp(NextMsg, Msg)) write_slowly(NextMsg);
     else printf("\n\n%s", Msg);
 
-    if (!game_ended) {
-        char u = get_input();
-        if (u == 'h') help();
-        handle_turn(to_dir(u));
-    } else if (game_ended == 1) {
-        getch();
+    char u = get_input();
+    if (u == 'h') help();
+    if (u == 'f') use_force();
+
+    if (game_ended == 1) {
         level++;
         N--;
         M--;
         setup_map();
+        return;
     }
+
+    handle_turn(to_dir(u));
 }
 
 void render_map() {
     system(clears);
+    printf("%d", game_ended);
     int i, j;
     printf("      ");
     for (i=0; i<N; i++) printf("%c ", alphabet[i]);
@@ -250,11 +257,65 @@ void render_map() {
         printf("\n");
     }
     printf("Level %d\n", level);
-    printf("Move with %c%c%c%c ", toupper(up_c), toupper(left_c), toupper(down_c), toupper(right_c));
+    printf("Move with %c%c%c%c, use the Force with F", toupper(up_c), toupper(left_c), toupper(down_c), toupper(right_c));
 }
 
 void print_vector(vec2 vector) {
     printf("\n(%d,%d)\n", vector.x, vector.y);
+}
+
+void use_force() {
+    if (force_remaining > 0) {
+        write_slowly("Type the location of the obstacle and where to move it:\n");
+        vec2 from, to;
+        if (force_get_position(&from, true) && force_get_position(&to, false)) {
+            print_vector(from);
+            print_vector(to);
+            reposition(from, to);
+            force_remaining--;
+            sprintf(NextMsg, "Leia uses the force!");
+        }
+    } else strcpy(NextMsg, "No force power remaining, Leia can only use it twice.");
+}
+
+int force_get_position(vec2 *vectorref, int is_from) {
+    vec2 vector = *vectorref;
+    int letter = toupper(getch());
+    vector.x = letter - 'A';
+    printf("%c", letter);
+    if (vector.x < 0 || vector.x > N) {
+        strcpy(NextMsg, "That's not a valid letter, or is out of bounds.");
+        return false;
+    } 
+
+    int first = getch();
+    if (first < '0' || first > '9') {
+        strcpy(NextMsg, "That's not a number.");
+        return false;
+    }
+    printf("%c", first);
+    char second = getch();
+    if (second >= '0' && second <= '9')
+        vector.y = (first - '0')*10 + (second - '0');
+    else vector.y = (first - '0');
+    printf("\b%02d>", vector.y);
+    if (vector.y < 0 || vector.y > M) {
+        strcpy(NextMsg, "That's not a valid number, or it's out of bounds.");
+        return false;
+    }
+    vector.y --;
+
+    if (is_from) {
+        if (*position(vector) != obstacle_c) {
+            sprintf(NextMsg, "There is no obstacle in %c%02d.", letter, vector.y+1);
+            return false;
+        }
+    } else if (*position(vector) != empty_c) {
+        sprintf(NextMsg, "There is something else in %c%02d.", letter, vector.y+1);
+        return false;
+    }
+    *vectorref = vector;
+    return true;
 }
 
 int move_dir(vec2* vector_src, int dir, char self) {
@@ -307,7 +368,6 @@ void hit(vec2 vector, int is_vader) {
             strcpy(NextMsg, "Leia was caught by a Darth Vader!\nGame over.\n\nPress X to return.");
         else strcpy(NextMsg, "Leia was caught by a Stormtrooper!\nGame over.\n\nPress X to return.");
         got_help = true;
-        handle_turn(-2);
         game_ended = 2;
     } else {
         int i;
@@ -324,8 +384,14 @@ void hit(vec2 vector, int is_vader) {
 }
 
 void victory() {
-    strcpy(NextMsg, "Leia successfully gave the rebel plans to R2D2!\n\nPress any button to move to the next level.");
-    game_ended = 1;
+    if (game_ended) return;
+    if (N > 5 && M > 5) {
+        strcpy(NextMsg, "Leia successfully gave the rebel plans to R2D2!\n\nPress any button to move to the next level.");
+        game_ended = 1;
+    } else {
+        strcpy(NextMsg, "Leia successfully gave the rebel plans to R2D2!\n\nYou have reached the maximum Level!");
+        game_ended = 2;
+    }
 }
 
 char reposition(vec2 from, vec2 to) {
@@ -472,20 +538,20 @@ void title_screen() {
 void set_board_size() {
     level = 1;
     int i = 0;
-    while (N < 5 && M < 5) {
-        printf("\nSetup the maximum size of the board\n\nEnter the number of colummns: ");
+    while (N < 5 || M < 5 || N > 52 || M > 52) {
+        printf("\nSetup the size of the board\n\nEnter the number of colummns: ");
         scanf("%d", &N);
         printf("Enter the number of rows: ");
         scanf("%d", &M);
         if (N >= 5 && M >= 5) {
+            if (N < 53 && M < 53) {
                 printf("\n%dx%d, is that correct? (Y/N)", N, M);
                 if (getch() == 'y') {
                     if (start_pressed) setup_map();
                     else title_screen();
-                }
-            } else {
-                printf("\nThat's too small, the minimum size is 5x5.\n");
-        }
+                } else N = 0, M = 0;
+            } else printf("\nThat's a little too big, the maximum size is 52x52\n");
+        } else printf("\nThat's too small, the minimum size is 5x5.\n");
         i++;
         if (i>69) {
             system(clears);
