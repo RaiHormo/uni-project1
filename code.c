@@ -1,3 +1,13 @@
+/* 
+    Spyridon Hormovitis
+    AM: 2022202300058
+    dit23058@go.uop.gr
+    
+    Pavlos Georgakopoulos
+    AM: 2022202300022
+    dit23022@go.uop.gr
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,11 +15,13 @@
 #include <math.h>
 #include <time.h>
 #include <unistd.h>
+//For the implementation of the getch() function that differs between OSes
 #ifdef __linux__
     #include <termios.h>
 #elif __WIN32__
     #include <conio.h>
 #endif
+// This was to get rid of an annoying warning
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 //Constants
@@ -26,6 +38,7 @@
 #elif __WIN32__
     const char *clears = "cls";
 #endif
+
 const char *alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 const char obstacle_c = 'X';
@@ -100,6 +113,7 @@ int main() {
 void setup_map() {
     system(clears);
     free_everything();
+    printf("If you see this it means the program crashed while doing the last thing listed, please run it again.\n\n");
     is_injured = false;
     got_help = false;
     game_ended = 0;
@@ -324,8 +338,8 @@ int move_dir(vec2* vector_src, int dir, char self) {
         if (self == strooper_c) return true;
         else return false;
     }
-    putc(self, stdout);
-    if (dir > 3) printf("Invalid direction!");
+    //putc(self, stdout);
+    //if (dir > 3) printf("Invalid direction!");
     print_vector(vector);
     new_pos.x = vector.x;
     new_pos.y = vector.y;
@@ -414,7 +428,7 @@ int check_collision(vec2 vector, char self) {
 void handle_stormtroopers() {
     int i;
     for (i=0; i<stormtrooper_am; i++) {
-        printf("%d", stormtrooper_dir[i]);
+        //printf("%d", stormtrooper_dir[i]);
         if (stormtrooper_dir[i] != -1)
             if (!move_dir(&stormtrooper[i], stormtrooper_dir[i], strooper_c)) {
                 stormtrooper_dir[i] = turn_around(stormtrooper_dir[i]);
@@ -427,8 +441,8 @@ void handle_vader() {
     vec2 towards = get_dir_towards(vader, leia);
     int i = 0;
     while (!vader_moved) {
-        printf("vader direction:");
-        print_vector(towards);
+        //printf("vader direction:");
+        //print_vector(towards);
         vader_moved = move_dir(&vader, towards.x, vader_c);
         vader_moved = move_dir(&vader, towards.y, vader_c) || vader_moved;
         if (!vader_moved) {
