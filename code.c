@@ -154,7 +154,7 @@ void setup_map() {
     }
     stormtrooper_am = maxi(2, stormtrooper_am);
     printf("%d stormtroopers, %d obstacles\n", stormtrooper_am, obstacle_am);
-
+    
     printf("Placing obstacles\n");
     srand(time(NULL));
     i = 0, j = 0;
@@ -253,7 +253,7 @@ void handle_turn(int leias_move) {
 
 void render_map() {
     system(clears);
-    printf("%d", game_ended);
+    //printf("%d", game_ended);
     int i, j;
     printf("      ");
     for (i=0; i<N; i++) printf("%c ", alphabet[i]);
